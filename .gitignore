@@ -1,0 +1,26 @@
+# Ignorar o ambiente virtual do Python
+venv/
+env/
+.venv/
+
+# Ignorar caches e arquivos de sistema
+__pycache__/
+*.pyc
+.DS_Store
+.ipynb_checkpoints/
+
+# Ignorar arquivos de configuração de IDE
+.vscode/
+.idea/
+
+# --- [O MAIS IMPORTANTE] ---
+
+# 1. IGNORAR TODOS OS DADOS (Brutos e Processados)
+dados/brutos/
+dados/processados/
+
+# 2. IGNORAR TODOS OS RESULTADOS (Gráficos, Tabelas)
+resultados_v7/
+
+# 3. IGNORAR TODOS OS MODELOS SALVOS E ARTEFATOS
+*.joblib
