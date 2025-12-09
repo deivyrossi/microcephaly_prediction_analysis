@@ -17,12 +17,17 @@ import pandas as pd
 import numpy as np
 import joblib
 
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import make_pipeline
+
 from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV, cross_val_predict
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.metrics import classification_report, precision_recall_curve
 from sklearn.utils import check_random_state
 from sklearn.impute import SimpleImputer
+from sklearn.metrics import classification_report, precision_recall_curve, recall_score, f1_score
 
 # Tenta importar o SMOTE
 try:
@@ -319,6 +324,59 @@ def main(use_search=False, n_iter=30):
     print(">>> Resultado Exp 3 (Threshold Tuning):")
     print(classification_report(y_test_pico, y_pred_tt_labels))
 
+   # ... (código anterior) ...
+    print("\n--- INICIANDO ESTUDO DE ABLAÇÃO (COM HIPERPARÂMETROS OTIMIZADOS) ---")
+    
+    # Grupos de features (Mantém igual)
+    cols_clinico = [c for c in final_cols if c.startswith('UFRES') or c.startswith('EXANT') or c.startswith('FEBRE') or c == 'IDADEGES']
+    cols_epidemio = cols_clinico + ['CASOS_ZIKA_CUMUL_LAG1']
+    cols_completo = final_cols 
+
+    experiments_ablation = [
+        ("Apenas Clínico", cols_clinico),
+        ("Clínico + Zika", cols_epidemio),
+        ("Completo (+Infra)", cols_completo)
+    ]
+    
+    # --- CORREÇÃO ÉTICA: USAR OS MESMOS PARAMS DO MODELO FINAL ---
+    BEST_PARAMS = {
+        'n_estimators': 300, 
+        'max_depth': 30, 
+        'max_features': 'log2', 
+        'min_samples_split': 10,
+        'random_state': RANDOM_STATE,
+        'n_jobs': -1
+    }
+    
+    results_ablation = []
+    
+    for name, cols in experiments_ablation:
+        print(f"Treinando Ablação: {name} ({len(cols)} features)...")
+        
+        # Filtra as colunas
+        X_tr_sub = X_train[cols]
+        X_ts_pico_sub = X_test_pico[cols]
+        X_ts_fora_sub = X_test_fora[cols]
+        
+        # Treina com os MELHORES PARÂMETROS
+        clf_ab = RandomForestClassifier(class_weight='balanced', **BEST_PARAMS)
+        clf_ab.fit(X_tr_sub, y_train)
+        
+        # Avalia
+        rec_pico = recall_score(y_test_pico, clf_ab.predict(X_ts_pico_sub), pos_label=POS_LABEL)
+        rec_fora = recall_score(y_fora, clf_ab.predict(X_ts_fora_sub), pos_label=POS_LABEL)
+        
+        print(f"   -> Recall Pico: {rec_pico:.4f} | Recall Drift: {rec_fora:.4f}")
+        
+        results_ablation.append({
+            "Modelo": name,
+            "Recall (Pico)": round(rec_pico, 3),
+            "Recall (Drift)": round(rec_fora, 3),
+            "Queda (Delta)": round(rec_pico - rec_fora, 3)
+        })
+
+    
+
     # 8. SALVAMENTO E FINALIZAÇÃO
     print("\nSalvando dados de teste finais...")
     # Salva com headers corretos
@@ -331,6 +389,16 @@ def main(use_search=False, n_iter=30):
     y_fora.to_frame().to_csv(FORA_PICO_TEST_Y_PATH, sep=';', index=False, encoding='latin1')
     # Usa datas_fora (provém de load_and_merge_data) em vez da variável indefinida datas_test_fora
     datas_fora.to_frame().to_csv(FORA_PICO_TEST_DATAS_PATH, sep=';', index=False, encoding='latin1')
+
+    print("\n[Exp Extra] Logistic Regression (Linear Baseline)...")
+    # LR precisa de dados normalizados
+    lr_pipe = make_pipeline(StandardScaler(), LogisticRegression(class_weight='balanced', max_iter=1000, random_state=RANDOM_STATE))
+    lr_pipe.fit(X_train, y_train)
+    
+    print(">>> Resultado Logistic Regression:")
+    print(classification_report(y_test_pico, lr_pipe.predict(X_test_pico)))
+
+    
     
     # Avaliação Final Fora de Pico (Drift)
     print("\n--- Avaliação Final DRIFT (Fora de Pico) ---")
