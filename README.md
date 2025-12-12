@@ -160,10 +160,11 @@ Para facilitar a reprodução e respeitar a LGPD (Lei Geral de Proteção de Dad
 │   │   ├── process_resp.py  # Limpeza dos microdados do RESP
 │   │   ├── process_sinan.py # Engenharia de features de lag do Zika
 │   │   └── create_public_dataset.py # Script de anonimização (LGPD)
-│   ├── eda/     
+│   ├── eda/
+        └── check_data_quality.py  # Checagem da qualidade dos dados  
 │   ├── train.py             # Treinamento do Random Forest
 │   ├── analysis.py          # Geração de Gráficos e Métricas
-│   ├── sensitivity.py       # Bootstrap para Intervalos de Confiança
+│   ├── sensitivity_analysis.py       # Bootstrap para Intervalos de Confiança
 │   └── utils.py             # Funções utilitárias
 ├── dados/                   # Local para armazenar os CSVs
 └── resultados/           # Saída do modelo (Ignorado pelo Git)
