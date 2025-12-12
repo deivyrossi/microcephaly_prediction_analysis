@@ -81,6 +81,8 @@ Ao aplicar o modelo treinado (2015-2017) nos dados futuros (2018-2024), observou
 
 **Diagnóstico:** A análise de explicabilidade revelou que, no período pós-epidêmico, o modelo perde a referência do sinal biológico (Zika) e passa a depender excessivamente de **variáveis de infraestrutura** (ex: Quantidade de Médicos) como *proxy* para confirmação, gerando viés.
 
+**Nota:** Ao reproduzir os experimentos utilizando o dataset anonimizado (que utiliza ordenação por Semana Epidemiológica em vez de Data Exata para proteger a privacidade), pode haver pequenas variações nas métricas (+/- 2%), sem alteração nas conclusões sobre o Concept Drift.
+
 ---
 
 ## Estudo de Ablação
@@ -95,6 +97,22 @@ Para provar a importância das fontes de dados externas, realizamos um estudo de
 
 ---
 
+
+### Visualização do Drift
+Abaixo, comparamos a curva Precision-Recall entre o período de epidemia e o período posterior, evidenciando a perda de capacidade preditiva.
+
+<div align="center">
+  <img src="resultados/graficos/pr_pico.png" width="45%" alt="PR Curve Pico">
+  <img src="resultados/graficos/pr_fora.png" width="45%" alt="PR Curve Fora">
+</div>
+
+### Diagnóstico de Viés (SHAP)
+O gráfico SHAP demonstra como o modelo passa a ignorar sintomas clínicos no período pós-epidêmico.
+
+<div align="center">
+  <img src="resultados/graficos/shap_fora.png" width="80%" alt="SHAP Drift">
+</div>
+
 ## Reproduzindo o Projeto
 
 Para facilitar a reprodução e respeitar a LGPD (Lei Geral de Proteção de Dados), o repositório está configurado para rodar com **dados anonimizados** disponíveis no Zenodo.
@@ -107,7 +125,7 @@ Para facilitar a reprodução e respeitar a LGPD (Lei Geral de Proteção de Dad
 
 1.  **Clone o repositório:**
     ```bash
-    git clone [https://github.com/deivyrossi/microcephaly_prediction_analysis.git](https://github.com/deivyrossi/microcephaly_prediction_analysis.git)
+    git clone https://github.com/deivyrossi/microcephaly_prediction_analysis.git
     cd microcephaly_prediction_analysis
     ```
 
@@ -138,11 +156,34 @@ Para facilitar a reprodução e respeitar a LGPD (Lei Geral de Proteção de Dad
 .
 ├── run_pipeline.py          # Script mestre de execução
 ├── src/
-│   ├── etl/                 # Scripts de processamento de dados (SINAN, CNES e RESP)
-│   ├── eda/                 # 
+│   ├── etl/                 
+│   │   ├── process_resp.py  # Limpeza dos microdados do RESP
+│   │   ├── process_sinan.py # Engenharia de features de lag do Zika
+│   │   └── create_public_dataset.py # Script de anonimização (LGPD)
+│   ├── eda/     
 │   ├── train.py             # Treinamento do Random Forest
 │   ├── analysis.py          # Geração de Gráficos e Métricas
 │   ├── sensitivity.py       # Bootstrap para Intervalos de Confiança
 │   └── utils.py             # Funções utilitárias
 ├── dados/                   # Local para armazenar os CSVs
 └── resultados/           # Saída do modelo (Ignorado pelo Git)
+
+```
+
+
+
+## Como Citar
+
+Se você utilizar este dataset ou código em sua pesquisa, por favor cite:
+
+```bibtex
+@misc{melo2025microcephaly,
+  author       = {Melo, Deivy R. T.},
+  title        = {Análise Preditiva e Generalização Temporal de Modelos de Ensemble para Classificação de Casos de Microcefalia no Brasil},
+  year         = {2025},
+  publisher    = {Zenodo},
+  doi          = {10.5281/zenodo.17880753},
+  url          = {[https://doi.org/10.5281/zenodo.17880753](https://doi.org/10.5281/zenodo.17880753)}
+}
+
+```
