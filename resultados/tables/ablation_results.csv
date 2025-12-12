@@ -1,0 +1,4 @@
+Modelo,Recall (Pico),Recall (Drift),Queda (Delta)
+Apenas Clínico,0.552,0.322,0.23
+Clínico + Zika,0.554,0.337,0.217
+Completo (+Infra),0.621,0.361,0.26

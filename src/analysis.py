@@ -1,7 +1,7 @@
-# analysis.py (MODELO V7.6 - Fixed Block Bootstrap)
+
 """
-Script de análise final para o MODELO V7.
-- Carrega o 'modelo_rf_final_v7.joblib'.
+Script de análise final para o MODELO.
+- Carrega o 'modelo_rf_final.joblib'.
 - Carrega os dados de teste JÁ PROCESSADOS (X, y, e DATAS).
 - Roda SHAP, Permutation Importance, McNemar.
 - Roda BLOCK BOOTSTRAP (Corrigido: Lógica estrita de MBB).
@@ -14,7 +14,7 @@ import os
 import json
 import shap
 import matplotlib
-matplotlib.use('Agg') # Backend não-interativo para servidores/scripts
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings("ignore")
@@ -36,22 +36,22 @@ from scipy.stats import binomtest
 # Configs / Paths
 # -------------------------
 DATA_DIR = 'dados/processados'
-RESULTS_DIR = 'resultados_v7'
+RESULTS_DIR = 'resultados'
 FIG_DIR = os.path.join(RESULTS_DIR, 'graficos')
 TABLE_DIR = os.path.join(RESULTS_DIR, 'tables')
 
-# Paths dos dados (v7.4/v7.5 structure)
-PICO_TEST_X_PATH = os.path.join(DATA_DIR, 'PICO_test_X_v7.csv')
-PICO_TEST_Y_PATH = os.path.join(DATA_DIR, 'PICO_test_y_v7.csv')
-PICO_TEST_DATAS_PATH = os.path.join(DATA_DIR, 'PICO_test_datas_v7.csv')
+# Paths dos dados
+PICO_TEST_X_PATH = os.path.join(DATA_DIR, 'PICO_test_X.csv')
+PICO_TEST_Y_PATH = os.path.join(DATA_DIR, 'PICO_test_y.csv')
+PICO_TEST_DATAS_PATH = os.path.join(DATA_DIR, 'PICO_test_datas.csv')
 
-FORA_PICO_TEST_X_PATH = os.path.join(DATA_DIR, 'FORA_PICO_test_X_v7.csv')
-FORA_PICO_TEST_Y_PATH = os.path.join(DATA_DIR, 'FORA_PICO_test_y_v7.csv')
-FORA_PICO_TEST_DATAS_PATH = os.path.join(DATA_DIR, 'FORA_PICO_test_datas_v7.csv')
+FORA_PICO_TEST_X_PATH = os.path.join(DATA_DIR, 'FORA_PICO_test_X.csv')
+FORA_PICO_TEST_Y_PATH = os.path.join(DATA_DIR, 'FORA_PICO_test_y.csv')
+FORA_PICO_TEST_DATAS_PATH = os.path.join(DATA_DIR, 'FORA_PICO_test_datas.csv')
 
-MODEL_PATH = 'modelo_rf_final_v7.joblib'
-DT_BASELINE_PATH = 'modelo_dt_baseline_v7.joblib'
-TRAIN_COLS_PATH = os.path.join(RESULTS_DIR, 'train_columns_v7.json')
+MODEL_PATH = 'modelo_rf_final.joblib'
+DT_BASELINE_PATH = 'modelo_dt_baseline.joblib'
+TRAIN_COLS_PATH = os.path.join(RESULTS_DIR, 'train_columns.json')
 
 os.makedirs(FIG_DIR, exist_ok=True)
 os.makedirs(TABLE_DIR, exist_ok=True)
@@ -88,7 +88,7 @@ def safe_pos_index(model, pos_label=POS_LABEL):
     raise ValueError(f"Modelo não contém a classe {pos_label}")
 
 # -------------------------
-# Block Bootstrap CI (CORRIGIDO v7.6)
+# Block Bootstrap CI 
 # -------------------------
 def get_block_indices_corrected(n_samples, block_length):
     """
@@ -126,7 +126,7 @@ def get_block_indices_corrected(n_samples, block_length):
     return np.array(boot_indices[:n_samples])
 
 def calculate_block_bootstrap_ci(model, X, y, datas, block_length_days=28, n_iterations=1000, pos_label=POS_LABEL):
-    print(f"Calculando CIs com BLOCK Bootstrap (v7.6 - Fixed) ({n_iterations} iterações)...")
+    print(f"Calculando CIs com BLOCK Bootstrap ({n_iterations} iterações)...")
     print(f"Janela de tempo do bloco: {block_length_days} dias.")
     
     stats = {'recall': [], 'precision': [], 'ap': [], 'mcc': []}
@@ -166,7 +166,7 @@ def calculate_block_bootstrap_ci(model, X, y, datas, block_length_days=28, n_ite
         y_res = y_sorted[block_indices]
         y_bin_res = y_bin_sorted[block_indices]
 
-        # Proteção contra amostras homogêneas (só uma classe)
+        # Proteção contra amostras homogêneas
         if len(np.unique(y_res)) < 2:
             continue 
 
@@ -193,7 +193,7 @@ def calculate_block_bootstrap_ci(model, X, y, datas, block_length_days=28, n_ite
     return cis
 
 # -------------------------
-# Outras Funções de Análise (Inalteradas)
+# Outras Funções de Análise
 # -------------------------
 def plot_pr_curve_for_dataset(model, X, y, label, savepath):
     pos_idx = safe_pos_index(model)
@@ -212,8 +212,6 @@ def analyze_shap(model, X, label, savepath):
     explainer = shap.TreeExplainer(model)
     pos_idx = safe_pos_index(model)
     
-    # Otimização: Usa apenas uma amostra do X se for muito grande (>2000) para background, 
-    # mas calcula SHAP value para tudo ou subconjunto
     shap_values_output = explainer(X)
     
     shap_values_pos = None
@@ -294,30 +292,31 @@ def main():
         return
 
     # 3. Metrics & Plots
-    plot_pr_curve_for_dataset(model, X_pico, y_pico, "Pico (Teste v7.6)", os.path.join(FIG_DIR, 'pr_pico_v7.png'))
-    plot_pr_curve_for_dataset(model, X_fora, y_fora, "Fora de Pico (v7.6)", os.path.join(FIG_DIR, 'pr_fora_v7.png'))
+    plot_pr_curve_for_dataset(model, X_pico, y_pico, "Pico", os.path.join(FIG_DIR, 'pr_pico.png'))
+    plot_pr_curve_for_dataset(model, X_fora, y_fora, "Fora de Pico", os.path.join(FIG_DIR, 'pr_fora.png'))
     
-    analyze_shap(model, X_pico, "Pico (Teste v7.6)", os.path.join(FIG_DIR, 'shap_pico_v7.png'))
-    analyze_shap(model, X_fora, "Fora de Pico (v7.6)", os.path.join(FIG_DIR, 'shap_fora_v7.png'))
+    analyze_shap(model, X_pico, "Pico", os.path.join(FIG_DIR, 'shap_pico.png'))
+    analyze_shap(model, X_fora, "Fora de Pico", os.path.join(FIG_DIR, 'shap_fora.png'))
     
-    permutation_importance_recall(model, X_fora, y_fora, savepath_png=os.path.join(FIG_DIR, 'perm_importance_fora_v7.png'), savepath_csv=os.path.join(TABLE_DIR, 'perm_importance_fora_v7.csv'))
-    threshold_sweep(model, X_fora, y_fora, os.path.join(TABLE_DIR, 'threshold_sweep_fora_v7.csv'))
+    permutation_importance_recall(model, X_fora, y_fora, savepath_png=os.path.join(FIG_DIR, 'perm_importance_fora.png'), savepath_csv=os.path.join(TABLE_DIR, 'perm_importance_fora.csv'))
+    permutation_importance_recall(model, X_pico, y_pico, savepath_png=os.path.join(FIG_DIR, 'perm_importance.png'), savepath_csv=os.path.join(TABLE_DIR, 'perm_importance_pico.csv'))
+    threshold_sweep(model, X_fora, y_fora, os.path.join(TABLE_DIR, 'threshold_sweep_fora.csv'))
 
     # 4. McNemar
     if os.path.exists(DT_BASELINE_PATH):
         dt_model = joblib.load(DT_BASELINE_PATH)
         m_res = mcnemar_test(y_fora.values, dt_model.predict(X_fora), model.predict(X_fora))
         print(f"McNemar Result: {m_res}")
-        with open(os.path.join(TABLE_DIR, 'mcnemar_result_v7.json'), 'w') as f:
+        with open(os.path.join(TABLE_DIR, 'mcnemar_result.json'), 'w') as f:
             json.dump(m_res, f)
 
-    # 5. Block Bootstrap (CORRIGIDO)
+    # 5. Block Bootstrap 
     print("\n--- Iniciando Bootstrap ---")
     ci_pico = calculate_block_bootstrap_ci(model, X_pico, y_pico, datas_pico)
     ci_fora = calculate_block_bootstrap_ci(model, X_fora, y_fora, datas_fora)
     
     cis = {'pico': ci_pico, 'fora': ci_fora}
-    with open(os.path.join(TABLE_DIR, 'bootstrap_cis_v7.json'), 'w') as f:
+    with open(os.path.join(TABLE_DIR, 'bootstrap_cis.json'), 'w') as f:
         json.dump(cis, f)
         
     print("Análise Concluída.")

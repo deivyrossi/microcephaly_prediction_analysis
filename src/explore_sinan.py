@@ -75,7 +75,7 @@ def process_sinan_zika_files():
 
     # 4. Engenharia de Feature: Cria a Semana Epidemiológica (Ano + Semana)
     
-    # --- [MUDANÇA PONTO 1: ISO WEEK] ---
+
     # Usa o padrão ISO 8601 (isocalendar) para semana epidemiológica
     print("Gerando semana epidemiológica (ISO 8601)...")
     try:
@@ -87,7 +87,6 @@ def process_sinan_zika_files():
         print("AVISO: dt.isocalendar() falhou, tentando com apply...")
         iso_week = df_limpo['DT_SIN_PRI'].apply(lambda x: x.isocalendar() if pd.notnull(x) else (None, None, None))
         df_limpo['SEMANA_EPI'] = iso_week.apply(lambda x: f"{int(x[0])}_{int(x[1]):02d}" if x[0] is not None else None)
-    # --- [FIM DA MUDANÇA] ---
 
     # 5. Agrega os dados: Conta os casos por Semana e por UF
     print("Agregando casos por UF e Semana Epidemiológica...")
