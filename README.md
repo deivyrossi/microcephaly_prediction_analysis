@@ -188,3 +188,26 @@ Se você utilizar este dataset ou código em sua pesquisa, por favor cite:
 }
 
 ```
+## Autor e Contatos
+
+<div align="center">
+  <br><br>
+     <i>Deivy Rossi Teixeira de Melo - Graduando - 4º Período de Engenharia de Computação @ CEFET-MG</i>
+  <br><br>
+  
+  [![Gmail][gmail-badge]][gmail-autor1]
+  [![Linkedin][linkedin-badge]][linkedin-autor1]
+  [![GitHub][github-badge]][github-autor1]
+  [![Instagram][instagram-badge]][instagram-autor1]
+
+  </div>
+
+  [gmail-badge]: https://img.shields.io/badge/-Gmail-c14438?style=flat-square&logo=Gmail&logoColor=white
+[linkedin-badge]: https://img.shields.io/badge/-LinkedIn-blue?style=flat-square&logo=Linkedin&logoColor=white
+[github-badge]: https://img.shields.io/badge/-GitHub-181717?style=flat-square&logo=github&logoColor=white
+[instagram-badge]: https://img.shields.io/badge/-Instagram-E4405F?style=flat-square&logo=instagram&logoColor=white
+
+[gmail-autor1]: mailto:deivyrossi@gmail.com
+[linkedin-autor1]: https://www.linkedin.com/in/deivy-rossi-380263279/
+[github-autor1]: https://github.com/deivyrossi
+[instagram-autor1]: https://www.instagram.com/deivyrossi/
