@@ -9,7 +9,7 @@
 ![Scikit-Learn](https://img.shields.io/badge/scikit--learn-%23F7931E.svg?style=for-the-badge&logo=scikit-learn&logoColor=white)
 ![Pandas](https://img.shields.io/badge/pandas-%23150458.svg?style=for-the-badge&logo=pandas&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
-[![Zenodo](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.XXXXXXX-blue?style=for-the-badge)](LINK_DO_SEU_ZENODO_AQUI)
+[![Zenodo](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.17880753-blue?style=for-the-badge)](https://zenodo.org/records/17880753)
 
 </div>
 
