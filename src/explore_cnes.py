@@ -3,10 +3,9 @@ import os
 import glob
 from simpledbf import Dbf5
 from dbf_reader import DbfReader
-import re # Para extrair UF e Ano do nome do arquivo
+import re 
 
 # --- Configs ---
-# Pasta onde você salvou os arquivos DBF baixados e convertidos
 INPUT_DIR = "dados/brutos/CNES_TEMP/" 
 
 # Onde salvar o arquivo processado final
