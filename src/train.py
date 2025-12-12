@@ -1,18 +1,7 @@
-
-"""
-Treino e salvamento de modelos.
-Versão final
- 1. Split Cronológico ocorre ANTES de qualquer Imputação ou Encoding.
- 2. Imputer é fitado APENAS no X_train.
- 3. Encoding alinhado (reindex) para garantir colunas idênticas no teste.
- 4. Threshold Tuning calculado via Cross-Validation no Treino (sem espiar o Teste).
- 5. Mantém correções anteriores (ISO Week, Mediana, drop_first=False).
-"""
+# src/train.py
 import os
 import json
 import argparse
-from pprint import pprint
-
 import pandas as pd
 import numpy as np
 import joblib
@@ -20,14 +9,12 @@ import joblib
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
-
 from sklearn.model_selection import TimeSeriesSplit, RandomizedSearchCV, cross_val_predict
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.metrics import classification_report, precision_recall_curve
+from sklearn.metrics import classification_report, precision_recall_curve, recall_score
 from sklearn.utils import check_random_state
 from sklearn.impute import SimpleImputer
-from sklearn.metrics import classification_report, precision_recall_curve, recall_score, f1_score
 
 # Tenta importar o SMOTE
 try:
@@ -44,20 +31,22 @@ PICO_PATH = 'dados/processados/DADOS_PICO_EPIDEMICO.csv'
 FORA_PICO_PATH = 'dados/processados/DADOS_FORA_PICO.csv' 
 SINAN_ZIKA_PATH = 'dados/processados/SINAN_ZIKA_AGREGADO_SEMANAL_UF.csv'
 CNES_INFRA_PATH = 'dados/processados/CNES_INFRAESTRUTURA_AGREGADO_ANO_UF.csv'
+
 RESULTS_DIR = 'resultados' 
 FIG_DIR = os.path.join(RESULTS_DIR, 'graficos')
 TABLE_DIR = os.path.join(RESULTS_DIR, 'tables')
 MODEL_RF_PATH = 'modelo_rf_final.joblib'
 MODEL_DT_PATH = 'modelo_dt_baseline.joblib'
 TRAIN_COLS_PATH = os.path.join(RESULTS_DIR, 'train_columns.json')
+
 DATA_DIR = 'dados/processados' 
 PICO_TEST_X_PATH = os.path.join(DATA_DIR, 'PICO_test_X.csv')
 PICO_TEST_Y_PATH = os.path.join(DATA_DIR, 'PICO_test_y.csv')
 FORA_PICO_TEST_X_PATH = os.path.join(DATA_DIR, 'FORA_PICO_test_X.csv')
 FORA_PICO_TEST_Y_PATH = os.path.join(DATA_DIR, 'FORA_PICO_test_y.csv')
-IMPUTER_PATH = os.path.join(RESULTS_DIR, 'imputer_idade.joblib')
 PICO_TEST_DATAS_PATH = os.path.join(DATA_DIR, 'PICO_test_datas.csv')
 FORA_PICO_TEST_DATAS_PATH = os.path.join(DATA_DIR, 'FORA_PICO_test_datas.csv')
+IMPUTER_PATH = os.path.join(RESULTS_DIR, 'imputer_idade.joblib')
 
 RANDOM_STATE = 42
 POS_LABEL = 1
@@ -84,11 +73,10 @@ def ensure_int_labels(series):
 
 def load_and_merge_data(path, base_features, sinan_df_lagged, cnes_df, target, dataset_name="Pico"):
     """
-    Carrega e faz o merge. Versão BLINDADA (Whitelist) para evitar vazamento de colunas de texto.
+    Carrega e faz o merge. Híbrido: aceita dados brutos (DT_NOTIFIC) ou anonimizados (SEMANA_EPI).
+    Se sinan_df/cnes_df forem None, assume que as colunas já existem no CSV.
     """
-    # 1. Carregamento Inicial
     df = pd.read_csv(path, sep=';', encoding='latin1')
-    
     datas = None 
 
     # --- LÓGICA HÍBRIDA DE DATA ---
@@ -110,10 +98,9 @@ def load_and_merge_data(path, base_features, sinan_df_lagged, cnes_df, target, d
         try:
             df['DT_NOTIFIC_APPROX'] = pd.to_datetime(df['SEMANA_EPI'] + '_1', format='%G_%V_%u', errors='coerce')
         except:
-            # Fallback se o formato for inválido
             df['DT_NOTIFIC_APPROX'] = pd.to_datetime(df['SEMANA_EPI'].str[:4] + '-01-01') 
         datas = df['DT_NOTIFIC_APPROX']
-        # Extrai o ano da string (ex: "2016_05" -> 2016)
+        # Extrai ano da string "YYYY_WW"
         df['ANO_DA_NOTIFICACAO'] = df['SEMANA_EPI'].astype(str).str.split('_').str[0].astype(int)
 
     else:
@@ -122,29 +109,30 @@ def load_and_merge_data(path, base_features, sinan_df_lagged, cnes_df, target, d
     # --- PROCESSAMENTO COMUM ---
     df.dropna(subset=['UFRES'], inplace=True)
     df[target] = ensure_int_labels(df[target])
-    
-    # Garante que IDADEGES seja numérico (converte strings vazias/erros para NaN)
     df['IDADEGES'] = pd.to_numeric(df['IDADEGES'], errors='coerce')
 
-    # Prepara chaves de merge
     df['UFRES_CODE_STR'] = df['UFRES'].astype(str) 
     df['UFRES_SIGLA'] = df['UFRES'].map(IBGE_UF_MAP)
     
-    # Merge SINAN (Zika)
-    df = pd.merge(df, sinan_df_lagged, left_on=['SEMANA_EPI', 'UFRES_CODE_STR'], right_on=['SEMANA_EPI', 'SG_UF_NOT'], how='left')
-    df['CASOS_ZIKA_CUMUL_LAG1'] = df['CASOS_ZIKA_CUMUL_LAG1'].fillna(0)
+    # --- MERGES CONDICIONAIS ---
+    
+    # Merge SINAN (se disponível)
+    if sinan_df_lagged is not None:
+        df = pd.merge(df, sinan_df_lagged, left_on=['SEMANA_EPI', 'UFRES_CODE_STR'], right_on=['SEMANA_EPI', 'SG_UF_NOT'], how='left')
+        df['CASOS_ZIKA_CUMUL_LAG1'] = df['CASOS_ZIKA_CUMUL_LAG1'].fillna(0)
+    
+    # Merge CNES (se disponível)
+    if cnes_df is not None:
+        df['ANO_ANTERIOR'] = df['ANO_DA_NOTIFICACAO'] - 1
+        df = pd.merge(df, cnes_df, left_on=['ANO_ANTERIOR', 'UFRES_SIGLA'], right_on=['ANO', 'UF'], how='left')
 
-    # Merge CNES (Infraestrutura)
-    df['ANO_ANTERIOR'] = df['ANO_DA_NOTIFICACAO'] - 1
-    df = pd.merge(df, cnes_df, left_on=['ANO_ANTERIOR', 'UFRES_SIGLA'], right_on=['ANO', 'UF'], how='left')
-
-    pct_missing_cnes = df['MEDICOS_SUS_TOTAL'].isnull().mean() * 100
-    print(f"[{dataset_name}] Missing CNES (Infra) antes da imputação: {pct_missing_cnes:.2f}%")
+    if 'MEDICOS_SUS_TOTAL' in df.columns:
+        pct_missing_cnes = df['MEDICOS_SUS_TOTAL'].isnull().mean() * 100
+        print(f"[{dataset_name}] Missing CNES (Infra) antes da imputação: {pct_missing_cnes:.2f}%")
 
     y = df[target]
     
-    # --- [A CORREÇÃO] WHITELIST: Seleciona APENAS o que entra no modelo ---
-    # Define as features externas que esperamos ter após o merge
+    # --- WHITELIST (Seleção Final) ---
     features_externas_esperadas = [
         'CASOS_ZIKA_CUMUL_LAG1', 
         'MEDICOS_SUS_TOTAL', 
@@ -152,62 +140,16 @@ def load_and_merge_data(path, base_features, sinan_df_lagged, cnes_df, target, d
         'LEITOS_UTI_NEONATAL_SUS'
     ]
     
-    # Lista final de colunas permitidas (Base + Externas + UFRES)
-    # UFRES é mantido pois será usado no One-Hot Encoding depois
     cols_permitidas = base_features + features_externas_esperadas + ['UFRES']
     
-    # Filtra apenas as colunas que realmente existem no DataFrame (segurança contra falha de merge)
+    # Filtra colunas existentes (seja via merge ou já presentes no CSV)
     final_cols = [c for c in cols_permitidas if c in df.columns]
     
-    # Cria X apenas com essas colunas. Qualquer outra coisa ("NNNNNN", datas, IDs) é descartada.
     X = df[final_cols].copy()
     
-    # Debug para você conferir no terminal
-    print(f"[{dataset_name}] Colunas selecionadas para X: {list(X.columns)}")
-    
+    print(f"[{dataset_name}] Colunas Finais no X: {list(X.columns)}")
     return X, y, datas
-    # --- PROCESSAMENTO COMUM ---
-    
-    # Limpeza de UF e Target (Comum aos dois)
-    df.dropna(subset=['UFRES'], inplace=True)
-    df[target] = ensure_int_labels(df[target])
-    df['IDADEGES'] = pd.to_numeric(df['IDADEGES'], errors='coerce')
 
-    # Preparação para Merge
-    df['UFRES_CODE_STR'] = df['UFRES'].astype(str) 
-    df['UFRES_SIGLA'] = df['UFRES'].map(IBGE_UF_MAP)
-    
-    # Merge SINAN (Zika)
-    df = pd.merge(df, sinan_df_lagged, left_on=['SEMANA_EPI', 'UFRES_CODE_STR'], right_on=['SEMANA_EPI', 'SG_UF_NOT'], how='left')
-    df['CASOS_ZIKA_CUMUL_LAG1'] = df['CASOS_ZIKA_CUMUL_LAG1'].fillna(0)
-
-    # Merge CNES (Infraestrutura)
-    df['ANO_ANTERIOR'] = df['ANO_DA_NOTIFICACAO'] - 1
-    df = pd.merge(df, cnes_df, left_on=['ANO_ANTERIOR', 'UFRES_SIGLA'], right_on=['ANO', 'UF'], how='left')
-
-    # Sanity Check
-    pct_missing_cnes = df['MEDICOS_SUS_TOTAL'].isnull().mean() * 100
-    print(f"[{dataset_name}] Missing CNES (Infra) antes da imputação: {pct_missing_cnes:.2f}%")
-
-    # Seleção Final de Features (X) e Target (y)
-    y = df[target]
-    
-    # Colunas técnicas para remover do X
-    cols_to_drop = [
-        target, 'DT_NOTIFIC', 'DT_NOTIFIC_APPROX', 
-        'ANO_DA_NOTIFICACAO', 'ANO_ANTERIOR', 'SEMANA_EPI', 
-        'UFRES_CODE_STR', 'UFRES_SIGLA', 'SG_UF_NOT', 'ANO', 'UF'
-    ]
-    
-    # drop com errors='ignore' é seguro aqui
-    X = df.drop(columns=cols_to_drop, errors='ignore')
-    
-    # Filtra X para ter apenas as features desejadas + as que acabamos de criar (Zika/CNES)
-    # Se quiser ser estrito com as colunas de entrada:
-    # X = X[base_features + ['CASOS_ZIKA_CUMUL_LAG1', 'MEDICOS_SUS_TOTAL', ...]]
-    
-    return X, y, datas
-# ---------- RandomizedSearch helper ----------
 def randomized_search_rf(X_train, y_train, datas_train, random_state=RANDOM_STATE, n_iter=30, n_jobs=-1):
     param_dist = {
         'n_estimators': [100, 200, 300],
@@ -218,7 +160,6 @@ def randomized_search_rf(X_train, y_train, datas_train, random_state=RANDOM_STAT
     rf = RandomForestClassifier(class_weight='balanced', random_state=random_state, n_jobs=n_jobs)
     tscv = TimeSeriesSplit(n_splits=5) 
     
-    # Log dos folds
     print("\n--- Folds TimeSeriesSplit (CV) ---")
     if isinstance(datas_train, pd.Series):
         datas_train = datas_train.values
@@ -237,35 +178,43 @@ def main(use_search=False, n_iter=30):
     base_features = ['EXANT_GES', 'FEBRE_GES', 'IDADEGES']
     target = 'CLASSIFIN'
 
-    # 1. Carrega Features Externas
+    # 1. Carrega Features Externas (Tenta carregar, se não der, segue em frente)
     print("Carregando features externas...")
+    df_sinan_lagged = None
+    df_cnes = None
+
+    if os.path.exists(SINAN_ZIKA_PATH):
+        try:
+            df_sinan_raw = pd.read_csv(SINAN_ZIKA_PATH, sep=';', encoding='utf-8-sig', dtype={'SEMANA_EPI': str, 'SG_UF_NOT': str})
+            df_sinan_raw['ANO_SEMANA_NUM'] = df_sinan_raw['SEMANA_EPI'].str.replace('_', '').astype(int)
+            df_sinan_raw = df_sinan_raw.sort_values(by=['SG_UF_NOT', 'ANO_SEMANA_NUM'])
+            df_sinan_raw['CASOS_ZIKA_CUMULATIVO'] = df_sinan_raw.groupby('SG_UF_NOT')['CASOS_ZIKA_CONFIRMADOS'].cumsum()
+            df_sinan_raw['CASOS_ZIKA_CUMUL_LAG1'] = df_sinan_raw.groupby('SG_UF_NOT')['CASOS_ZIKA_CUMULATIVO'].shift(1).fillna(0)
+            df_sinan_lagged = df_sinan_raw[['SEMANA_EPI', 'SG_UF_NOT', 'CASOS_ZIKA_CUMUL_LAG1']].copy()
+        except Exception as e:
+            print(f"AVISO: Falha ao ler SINAN ({e}).")
+    else:
+        print("AVISO: Arquivo SINAN não encontrado. Assumindo que o Dataset de entrada já possui features de Zika.")
+
+    if os.path.exists(CNES_INFRA_PATH):
+        try:
+            df_cnes = pd.read_csv(CNES_INFRA_PATH, sep=';', encoding='utf-8-sig')
+        except Exception as e:
+            print(f"AVISO: Falha ao ler CNES ({e}).")
+    else:
+        print("AVISO: Arquivo CNES não encontrado. Assumindo que o Dataset de entrada já possui features de Infra.")
+
+    # 2. Carrega Dados Principais
+    print("Carregando dados principais...")
     try:
-        df_sinan_raw = pd.read_csv(SINAN_ZIKA_PATH, sep=';', encoding='utf-8-sig', dtype={'SEMANA_EPI': str, 'SG_UF_NOT': str})
-        # (lógica de lag do Sinan )
-        df_sinan_raw['ANO_SEMANA_NUM'] = df_sinan_raw['SEMANA_EPI'].str.replace('_', '').astype(int)
-        df_sinan_raw = df_sinan_raw.sort_values(by=['SG_UF_NOT', 'ANO_SEMANA_NUM'])
-        df_sinan_raw['CASOS_ZIKA_CUMULATIVO'] = df_sinan_raw.groupby('SG_UF_NOT')['CASOS_ZIKA_CONFIRMADOS'].cumsum()
-        df_sinan_raw['CASOS_ZIKA_CUMUL_LAG1'] = df_sinan_raw.groupby('SG_UF_NOT')['CASOS_ZIKA_CUMULATIVO'].shift(1).fillna(0)
-        df_sinan_lagged = df_sinan_raw[['SEMANA_EPI', 'SG_UF_NOT', 'CASOS_ZIKA_CUMUL_LAG1']].copy()
-    except FileNotFoundError:
-        print("ERRO: SINAN não encontrado.")
-        return
-    
-    try:
-        df_cnes = pd.read_csv(CNES_INFRA_PATH, sep=';', encoding='utf-8-sig')
-    except FileNotFoundError:
-        print("ERRO: CNES não encontrado.")
+        X_pico_raw, y_pico_raw, datas_pico = load_and_merge_data(PICO_PATH, base_features, df_sinan_lagged, df_cnes, target, "Pico")
+        X_fora_raw, y_fora, datas_fora = load_and_merge_data(FORA_PICO_PATH, base_features, df_sinan_lagged, df_cnes, target, "Fora de Pico")
+    except FileNotFoundError as e:
+        print(f"ERRO FATAL: Arquivo de dados principal não encontrado: {e}")
         return
 
-    # 2. Carrega Dados Brutos (Pico e Fora)
-    print("Carregando dados brutos...")
-    X_pico_raw, y_pico_raw, datas_pico = load_and_merge_data(PICO_PATH, base_features, df_sinan_lagged, df_cnes, target, "Pico")
-    X_fora_raw, y_fora, datas_fora = load_and_merge_data(FORA_PICO_PATH, base_features, df_sinan_lagged, df_cnes, target, "Fora de Pico")
-
-    # 3. SPLIT CRONOLÓGICO (ANTES DE PROCESSAR)
-    print("Realizando Split Cronológico (80/20) no PICO antes do processamento...")
-    
-    # Ordena Pico
+    # 3. Split Cronológico
+    print("Realizando Split Cronológico (80/20)...")
     sort_idx = datas_pico.argsort()
     X_pico_sorted = X_pico_raw.iloc[sort_idx]
     y_pico_sorted = y_pico_raw.iloc[sort_idx]
@@ -273,7 +222,6 @@ def main(use_search=False, n_iter=30):
     
     split_index = int(len(X_pico_sorted) * 0.8)
     
-    # Define conjuntos
     X_train_raw = X_pico_sorted.iloc[:split_index].copy()
     y_train = y_pico_sorted.iloc[:split_index].copy()
     datas_train = datas_pico_sorted.iloc[:split_index].copy()
@@ -282,72 +230,55 @@ def main(use_search=False, n_iter=30):
     y_test_pico = y_pico_sorted.iloc[split_index:].copy()
     datas_test_pico = datas_pico_sorted.iloc[split_index:].copy()
     
-    # O conjunto "Fora de Pico" é inteiramente teste de drift
     X_test_fora_raw = X_fora_raw.copy()
-    # y_fora e datas_fora já definidos
     
     print(f"Treino: {len(X_train_raw)} | Teste Pico: {len(X_test_pico_raw)} | Teste Fora: {len(X_test_fora_raw)}")
-    print(f"Distribuição Treino: \n{y_train.value_counts()}")
 
-    # 4. IMPUTAÇÃO (Fit apenas no Treino)
-    print("Aplicando Imputação (Fit no Treino, Transform no resto)...")
-    
+    # 4. Imputação
+    print("Aplicando Imputação (Fit no Treino)...")
     cols_to_impute = ['IDADEGES', 'MEDICOS_SUS_TOTAL', 'LEITOS_OBSTETRICIA_SUS', 'LEITOS_UTI_NEONATAL_SUS']
-    # Garante que colunas existem
     cols_to_impute = [c for c in cols_to_impute if c in X_train_raw.columns]
     
     imputer = SimpleImputer(strategy='median')
-    
-    # Fit apenas no treino!
     imputer.fit(X_train_raw[cols_to_impute])
     
-    # Transform em todos
     X_train_raw[cols_to_impute] = imputer.transform(X_train_raw[cols_to_impute])
     X_test_pico_raw[cols_to_impute] = imputer.transform(X_test_pico_raw[cols_to_impute])
     X_test_fora_raw[cols_to_impute] = imputer.transform(X_test_fora_raw[cols_to_impute])
     
     joblib.dump(imputer, IMPUTER_PATH)
 
-    # 5. ENCODING (One-Hot alinhado)
-    print("Aplicando One-Hot Encoding (Alinhado ao Treino)...")
-    
+    # 5. Encoding
+    print("Aplicando One-Hot Encoding...")
     cols_to_encode = ['UFRES', 'EXANT_GES', 'FEBRE_GES']
-    
-    # Get dummies no treino
+    cols_to_encode = [c for c in cols_to_encode if c in X_train_raw.columns] # Segurança
+
     X_train_encoded = pd.get_dummies(X_train_raw, columns=cols_to_encode, dummy_na=True, drop_first=False)
     final_cols = X_train_encoded.columns.tolist()
     
-    # Salva colunas
     with open(TRAIN_COLS_PATH, 'w') as f:
         json.dump(final_cols, f)
     
-    # Aplica encoding nos testes e realinha colunas (reindex)
-    # Isso garante que se o teste tiver uma UF nova, ela é ignorada. Se faltar uma UF, ela entra como 0.
     X_test_pico_encoded = pd.get_dummies(X_test_pico_raw, columns=cols_to_encode, dummy_na=True, drop_first=False)
     X_test_pico_encoded = X_test_pico_encoded.reindex(columns=final_cols, fill_value=0)
     
     X_test_fora_encoded = pd.get_dummies(X_test_fora_raw, columns=cols_to_encode, dummy_na=True, drop_first=False)
     X_test_fora_encoded = X_test_fora_encoded.reindex(columns=final_cols, fill_value=0)
     
-    print(f"Features finais: {len(final_cols)}")
-
-    # Renomeia para facilitar
     X_train = X_train_encoded
     X_test_pico = X_test_pico_encoded
     X_test_fora = X_test_fora_encoded
 
-    # 6. TREINO E BASELINE
+    # 6. Baseline
     print("\nTreinando DecisionTree (Baseline)...")
     dt = DecisionTreeClassifier(random_state=RANDOM_STATE)
     dt.fit(X_train, y_train)
     joblib.dump(dt, MODEL_DT_PATH)
-    
-    # Relatórios Baseline
-    pd.DataFrame(classification_report(y_test_pico, dt.predict(X_test_pico), output_dict=True)).to_csv(os.path.join(TABLE_DIR, 'classification_report_dt_pico.csv'))
-    pd.DataFrame(classification_report(y_fora, dt.predict(X_test_fora), output_dict=True)).to_csv(os.path.join(TABLE_DIR, 'classification_report_dt_fora_pico.csv'))
 
-    # 7. EXPERIMENTOS ÉTICOS
-    print("\n--- INICIANDO EXPERIMENTOS---")
+    # 7. Experimentos e Modelo Final
+    print("\n--- INICIANDO EXPERIMENTOS ---")
+    
+    # MELHORES HIPERPARÂMETROS (Fixos para reprodutibilidade e performance alta)
     BEST_PARAMS = {
         'n_estimators': 300, 
         'max_depth': 30, 
@@ -356,6 +287,7 @@ def main(use_search=False, n_iter=30):
         'random_state': RANDOM_STATE,
         'n_jobs': -1
     }
+
     # Exp 1: Class Weight (Principal)
     print("[Exp 1] Class Weight Balanced (Principal)...")
     if use_search:
@@ -369,44 +301,20 @@ def main(use_search=False, n_iter=30):
     print(">>> Resultado Exp 1 (Pico):")
     print(classification_report(y_test_pico, modelo_cw.predict(X_test_pico)))
     
-    # Exp 2: SMOTE
+    # Exp 2: SMOTE (Opcional)
     if IMBLEARN_AVAILABLE:
         print("\n[Exp 2] SMOTE...")
-        pipeline_smote = ImbPipeline(steps=[('smote', SMOTE(random_state=RANDOM_STATE)), ('model', RandomForestClassifier(**BEST_PARAMS))])
+        # Usa os mesmos params para comparação justa
+        pipeline_smote = ImbPipeline(steps=[('smote', SMOTE(random_state=RANDOM_STATE)), ('model', RandomForestClassifier(class_weight=None, **BEST_PARAMS))])
         pipeline_smote.fit(X_train, y_train)
         print(">>> Resultado Exp 2 (SMOTE):")
         print(classification_report(y_test_pico, pipeline_smote.predict(X_test_pico)))
 
-    # Exp 3: Threshold Tuning
-    print("\n[Exp 3] Threshold Tuning (Honesto via CV)...")
-    modelo_tt = RandomForestClassifier(**BEST_PARAMS)
+    # 8. Ablação
+    print("\n--- INICIANDO ESTUDO DE ABLAÇÃO ---")
     
-    # Obtém probabilidades no treino via Cross-Validation
-    y_probas_cv = cross_val_predict(modelo_tt, X_train, y_train, cv=5, method='predict_proba', n_jobs=-1)[:, 1]
-    
-    # Encontra melhor threshold no TREINO
-    precisions, recalls, thresholds = precision_recall_curve(y_train, y_probas_cv, pos_label=POS_LABEL)
-    f1_scores = (2 * precisions * recalls) / (precisions + recalls + 1e-10)
-    best_threshold = thresholds[np.argmax(f1_scores)]
-    print(f"Melhor limiar descoberto no CV (Treino): {best_threshold:.4f}")
-    
-    # Treina no X_train inteiro para aplicar no teste
-    modelo_tt.fit(X_train, y_train)
-    
-    # Aplica no Teste
-    y_probas_test = modelo_tt.predict_proba(X_test_pico)[:, 1]
-    y_pred_tt = (y_probas_test >= best_threshold).astype(int)
-    y_pred_tt_labels = np.where(y_pred_tt == 1, POS_LABEL, 5)
-    
-    print(">>> Resultado Exp 3 (Threshold Tuning):")
-    print(classification_report(y_test_pico, y_pred_tt_labels))
-
-   # ... (código anterior) ...
-    print("\n--- INICIANDO ESTUDO DE ABLAÇÃO (COM HIPERPARÂMETROS OTIMIZADOS) ---")
-    
-    # Grupos de features (Mantém igual)
     cols_clinico = [c for c in final_cols if c.startswith('UFRES') or c.startswith('EXANT') or c.startswith('FEBRE') or c == 'IDADEGES']
-    cols_epidemio = cols_clinico + ['CASOS_ZIKA_CUMUL_LAG1']
+    cols_epidemio = cols_clinico + ['CASOS_ZIKA_CUMUL_LAG1'] if 'CASOS_ZIKA_CUMUL_LAG1' in final_cols else cols_clinico
     cols_completo = final_cols 
 
     experiments_ablation = [
@@ -415,72 +323,31 @@ def main(use_search=False, n_iter=30):
         ("Completo (+Infra)", cols_completo)
     ]
     
-    # --- CORREÇÃO ÉTICA: USAR OS MESMOS PARAMS DO MODELO FINAL ---
-    BEST_PARAMS = {
-        'n_estimators': 300, 
-        'max_depth': 30, 
-        'max_features': 'log2', 
-        'min_samples_split': 10,
-        'random_state': RANDOM_STATE,
-        'n_jobs': -1
-    }
-    
-    results_ablation = []
-    
     for name, cols in experiments_ablation:
         print(f"Treinando Ablação: {name} ({len(cols)} features)...")
+        # Garante que as colunas existem
+        valid_cols = [c for c in cols if c in X_train.columns]
         
-        # Filtra as colunas
-        X_tr_sub = X_train[cols]
-        X_ts_pico_sub = X_test_pico[cols]
-        X_ts_fora_sub = X_test_fora[cols]
-        
-        # Treina com os MELHORES PARÂMETROS
         clf_ab = RandomForestClassifier(class_weight='balanced', **BEST_PARAMS)
-        clf_ab.fit(X_tr_sub, y_train)
+        clf_ab.fit(X_train[valid_cols], y_train)
         
-        # Avalia
-        rec_pico = recall_score(y_test_pico, clf_ab.predict(X_ts_pico_sub), pos_label=POS_LABEL)
-        rec_fora = recall_score(y_fora, clf_ab.predict(X_ts_fora_sub), pos_label=POS_LABEL)
+        rec_pico = recall_score(y_test_pico, clf_ab.predict(X_test_pico[valid_cols]), pos_label=POS_LABEL)
+        rec_fora = recall_score(y_fora, clf_ab.predict(X_test_fora[valid_cols]), pos_label=POS_LABEL)
         
         print(f"   -> Recall Pico: {rec_pico:.4f} | Recall Drift: {rec_fora:.4f}")
-        
-        results_ablation.append({
-            "Modelo": name,
-            "Recall (Pico)": round(rec_pico, 3),
-            "Recall (Drift)": round(rec_fora, 3),
-            "Queda (Delta)": round(rec_pico - rec_fora, 3)
-        })
 
-    
-
-    # 8. SALVAMENTO E FINALIZAÇÃO
+    # 9. Salvando Test Sets
     print("\nSalvando dados de teste finais...")
-    # Salva com headers corretos
     X_test_pico.to_csv(PICO_TEST_X_PATH, sep=';', index=False, encoding='latin1')
     y_test_pico.to_frame().to_csv(PICO_TEST_Y_PATH, sep=';', index=False, encoding='latin1')
     datas_test_pico.to_frame().to_csv(PICO_TEST_DATAS_PATH, sep=';', index=False, encoding='latin1')
     
     X_test_fora.to_csv(FORA_PICO_TEST_X_PATH, sep=';', index=False, encoding='latin1')
-
     y_fora.to_frame().to_csv(FORA_PICO_TEST_Y_PATH, sep=';', index=False, encoding='latin1')
-    # Usa datas_fora (provém de load_and_merge_data) em vez da variável indefinida datas_test_fora
     datas_fora.to_frame().to_csv(FORA_PICO_TEST_DATAS_PATH, sep=';', index=False, encoding='latin1')
 
-    print("\n[Exp Extra] Logistic Regression (Linear Baseline)...")
-    # LR precisa de dados normalizados
-    lr_pipe = make_pipeline(StandardScaler(), LogisticRegression(class_weight='balanced', max_iter=1000, random_state=RANDOM_STATE))
-    lr_pipe.fit(X_train, y_train)
-    
-    print(">>> Resultado Logistic Regression:")
-    print(classification_report(y_test_pico, lr_pipe.predict(X_test_pico)))
-
-    
-    
-    # Avaliação Final Fora de Pico (Drift)
     print("\n--- Avaliação Final DRIFT (Fora de Pico) ---")
     print(classification_report(y_fora, modelo_cw.predict(X_test_fora)))
-    pd.DataFrame(classification_report(y_fora, modelo_cw.predict(X_test_fora), output_dict=True)).to_csv(os.path.join(TABLE_DIR, 'classification_report_rf_fora_pico.csv'))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
