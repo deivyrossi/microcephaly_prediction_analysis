@@ -28,13 +28,13 @@
 
 ---
 
-## ☕ Introdução
+## Introdução
 
 Este projeto apresenta um modelo de **Machine Learning (Random Forest)** desenvolvido para classificar casos suspeitos de microcefalia no Brasil, utilizando dados do **Registro de Eventos em Saúde Pública (RESP)**. O foco central do trabalho não é apenas a classificação estática, mas a investigação da robustez temporal do modelo frente ao declínio da epidemia de Zika Vírus.
 
 A análise abrange o período de **Pico Epidêmico (2015–2017)** e o período subsequente **Fora de Pico (2018–2024)**, diagnosticando o fenômeno de *Concept Drift* (mudança de conceito) e como variáveis de infraestrutura de saúde (CNES) influenciam o viés do modelo.
 
-## 🎯 Objetivos
+## Objetivos
 
 1.  **Classificação:** Desenvolver um classificador capaz de distinguir casos "Confirmados" de "Descartados" maximizando o *Recall* (Sensibilidade).
 2.  **Robustez Temporal:** Avaliar a degradação de performance do modelo quando aplicado em anos futuros (*Drift*).
@@ -60,7 +60,7 @@ O projeto implementa um pipeline **"Leak-Proof"** (à prova de vazamento), onde 
 
 ---
 
-## 📊 Resultados e Discussão
+## Resultados e Discussão
 
 Os experimentos demonstraram que o modelo aprende padrões robustos durante a epidemia, mas sofre degradação significativa no período posterior.
 
@@ -86,7 +86,7 @@ Ao aplicar o modelo treinado (2015-2017) nos dados futuros (2018-2024), observou
 
 ---
 
-## 🔬 Estudo de Ablação
+## Estudo de Ablação
 
 Para provar a importância das fontes de dados externas, realizamos um estudo de ablação (retirada progressiva de features).
 
@@ -98,7 +98,7 @@ Para provar a importância das fontes de dados externas, realizamos um estudo de
 
 ---
 
-## 🚀 Reproduzindo o Projeto
+## Reproduzindo o Projeto
 
 Para facilitar a reprodução e respeitar a LGPD (Lei Geral de Proteção de Dados), o repositório está configurado para rodar com **dados anonimizados** disponíveis no Zenodo.
 
@@ -135,7 +135,7 @@ Para facilitar a reprodução e respeitar a LGPD (Lei Geral de Proteção de Dad
 
 ---
 
-## 📂 Organização dos Arquivos
+## Organização dos Arquivos
 
 ```text
 .
