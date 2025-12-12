@@ -84,59 +84,88 @@ def ensure_int_labels(series):
 
 def load_and_merge_data(path, base_features, sinan_df_lagged, cnes_df, target, dataset_name="Pico"):
     """
-    Carrega e faz o merge. Híbrido: aceita dados brutos (DT_NOTIFIC) ou anonimizados (SEMANA_EPI).
+    Carrega e faz o merge. Versão BLINDADA (Whitelist) para evitar vazamento de colunas de texto.
     """
     # 1. Carregamento Inicial
-    # Lemos tudo primeiro, ou filtramos dinamicamente. Para simplificar, lemos o CSV.
     df = pd.read_csv(path, sep=';', encoding='latin1')
     
-    # Filtra colunas base necessárias + target + UFRES
-    # (Mantemos todas as colunas carregadas por segurança no drop depois)
-    
-    datas = None # Inicializa variável
+    datas = None 
 
     # --- LÓGICA HÍBRIDA DE DATA ---
     if 'DT_NOTIFIC' in df.columns:
-        # CENÁRIO A: DADOS BRUTOS
+        # CENÁRIO A: DADOS BRUTOS (Com data exata)
         df['DT_NOTIFIC'] = pd.to_datetime(df['DT_NOTIFIC'], errors='coerce')
-        
-        # Limpeza específica de data
         df.dropna(subset=['DT_NOTIFIC'], inplace=True)
-        
-        # Calcula ISO Week
         try:
             iso_week = df['DT_NOTIFIC'].dt.isocalendar()
             df['SEMANA_EPI'] = iso_week.apply(lambda x: f"{int(x.year)}_{int(x.week):02d}", axis=1)
         except Exception:
             df['SEMANA_EPI'] = df['DT_NOTIFIC'].dt.strftime('%Y_%U')
-            
-        # Calcula Ano
         df['ANO_DA_NOTIFICACAO'] = df['DT_NOTIFIC'].dt.year
-        
-        # Define variável de ordenação
         datas = df['DT_NOTIFIC']
 
     elif 'SEMANA_EPI' in df.columns:
-        # CENÁRIO B: DADOS ANONIMIZADOS
+        # CENÁRIO B: DADOS ANONIMIZADOS (Sem data exata)
         print(f"AVISO [{dataset_name}]: Usando dados anonimizados. Ordenação por Semana Aproximada.")
-        
-        # Cria data fictícia para ordenação (1º dia da semana ISO)
-        # Formato esperado: YYYY_WW -> YYYY-Www-1
-        # O try/except garante robustez se o formato estiver estranho
         try:
             df['DT_NOTIFIC_APPROX'] = pd.to_datetime(df['SEMANA_EPI'] + '_1', format='%G_%V_%u', errors='coerce')
         except:
-            # Fallback simples se o formato ISO falhar
+            # Fallback se o formato for inválido
             df['DT_NOTIFIC_APPROX'] = pd.to_datetime(df['SEMANA_EPI'].str[:4] + '-01-01') 
-            
         datas = df['DT_NOTIFIC_APPROX']
-        
-        # Calcula Ano (Pegando os 4 primeiros dígitos da string "2016_05")
+        # Extrai o ano da string (ex: "2016_05" -> 2016)
         df['ANO_DA_NOTIFICACAO'] = df['SEMANA_EPI'].astype(str).str.split('_').str[0].astype(int)
 
     else:
         raise ValueError("ERRO CRÍTICO: Dataset não possui 'DT_NOTIFIC' nem 'SEMANA_EPI'.")
 
+    # --- PROCESSAMENTO COMUM ---
+    df.dropna(subset=['UFRES'], inplace=True)
+    df[target] = ensure_int_labels(df[target])
+    
+    # Garante que IDADEGES seja numérico (converte strings vazias/erros para NaN)
+    df['IDADEGES'] = pd.to_numeric(df['IDADEGES'], errors='coerce')
+
+    # Prepara chaves de merge
+    df['UFRES_CODE_STR'] = df['UFRES'].astype(str) 
+    df['UFRES_SIGLA'] = df['UFRES'].map(IBGE_UF_MAP)
+    
+    # Merge SINAN (Zika)
+    df = pd.merge(df, sinan_df_lagged, left_on=['SEMANA_EPI', 'UFRES_CODE_STR'], right_on=['SEMANA_EPI', 'SG_UF_NOT'], how='left')
+    df['CASOS_ZIKA_CUMUL_LAG1'] = df['CASOS_ZIKA_CUMUL_LAG1'].fillna(0)
+
+    # Merge CNES (Infraestrutura)
+    df['ANO_ANTERIOR'] = df['ANO_DA_NOTIFICACAO'] - 1
+    df = pd.merge(df, cnes_df, left_on=['ANO_ANTERIOR', 'UFRES_SIGLA'], right_on=['ANO', 'UF'], how='left')
+
+    pct_missing_cnes = df['MEDICOS_SUS_TOTAL'].isnull().mean() * 100
+    print(f"[{dataset_name}] Missing CNES (Infra) antes da imputação: {pct_missing_cnes:.2f}%")
+
+    y = df[target]
+    
+    # --- [A CORREÇÃO] WHITELIST: Seleciona APENAS o que entra no modelo ---
+    # Define as features externas que esperamos ter após o merge
+    features_externas_esperadas = [
+        'CASOS_ZIKA_CUMUL_LAG1', 
+        'MEDICOS_SUS_TOTAL', 
+        'LEITOS_OBSTETRICIA_SUS', 
+        'LEITOS_UTI_NEONATAL_SUS'
+    ]
+    
+    # Lista final de colunas permitidas (Base + Externas + UFRES)
+    # UFRES é mantido pois será usado no One-Hot Encoding depois
+    cols_permitidas = base_features + features_externas_esperadas + ['UFRES']
+    
+    # Filtra apenas as colunas que realmente existem no DataFrame (segurança contra falha de merge)
+    final_cols = [c for c in cols_permitidas if c in df.columns]
+    
+    # Cria X apenas com essas colunas. Qualquer outra coisa ("NNNNNN", datas, IDs) é descartada.
+    X = df[final_cols].copy()
+    
+    # Debug para você conferir no terminal
+    print(f"[{dataset_name}] Colunas selecionadas para X: {list(X.columns)}")
+    
+    return X, y, datas
     # --- PROCESSAMENTO COMUM ---
     
     # Limpeza de UF e Target (Comum aos dois)
@@ -319,14 +348,20 @@ def main(use_search=False, n_iter=30):
 
     # 7. EXPERIMENTOS ÉTICOS
     print("\n--- INICIANDO EXPERIMENTOS---")
-    RF_PARAMS = {'n_estimators': 100, 'max_depth': 10, 'max_features': 'log2', 'min_samples_split': 10, 'random_state': RANDOM_STATE, 'n_jobs': -1}
-
+    BEST_PARAMS = {
+        'n_estimators': 300, 
+        'max_depth': 30, 
+        'max_features': 'log2', 
+        'min_samples_split': 10,
+        'random_state': RANDOM_STATE,
+        'n_jobs': -1
+    }
     # Exp 1: Class Weight (Principal)
     print("[Exp 1] Class Weight Balanced (Principal)...")
     if use_search:
         modelo_cw = randomized_search_rf(X_train, y_train, datas_train, random_state=RANDOM_STATE, n_iter=n_iter)
     else:
-        modelo_cw = RandomForestClassifier(class_weight='balanced', **RF_PARAMS)
+        modelo_cw = RandomForestClassifier(class_weight='balanced', **BEST_PARAMS)
         modelo_cw.fit(X_train, y_train)
     
     joblib.dump(modelo_cw, MODEL_RF_PATH)
@@ -337,14 +372,14 @@ def main(use_search=False, n_iter=30):
     # Exp 2: SMOTE
     if IMBLEARN_AVAILABLE:
         print("\n[Exp 2] SMOTE...")
-        pipeline_smote = ImbPipeline(steps=[('smote', SMOTE(random_state=RANDOM_STATE)), ('model', RandomForestClassifier(**RF_PARAMS))])
+        pipeline_smote = ImbPipeline(steps=[('smote', SMOTE(random_state=RANDOM_STATE)), ('model', RandomForestClassifier(**BEST_PARAMS))])
         pipeline_smote.fit(X_train, y_train)
         print(">>> Resultado Exp 2 (SMOTE):")
         print(classification_report(y_test_pico, pipeline_smote.predict(X_test_pico)))
 
     # Exp 3: Threshold Tuning
     print("\n[Exp 3] Threshold Tuning (Honesto via CV)...")
-    modelo_tt = RandomForestClassifier(**RF_PARAMS)
+    modelo_tt = RandomForestClassifier(**BEST_PARAMS)
     
     # Obtém probabilidades no treino via Cross-Validation
     y_probas_cv = cross_val_predict(modelo_tt, X_train, y_train, cv=5, method='predict_proba', n_jobs=-1)[:, 1]

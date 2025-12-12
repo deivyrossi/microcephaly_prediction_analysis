@@ -1,26 +1,32 @@
-# Ignorar o ambiente virtual do Python
+# --- Ambiente e Sistema ---
 venv/
 env/
 .venv/
-
-# Ignorar caches e arquivos de sistema
 __pycache__/
 *.pyc
 .DS_Store
-.ipynb_checkpoints/
-
-# Ignorar arquivos de configuração de IDE
 .vscode/
 .idea/
 
-# --- [O MAIS IMPORTANTE] ---
+# --- DADOS (CRÍTICO: LGPD) ---
+# Ignora tudo dentro das pastas de dados...
+dados/brutos/*
+dados/processados/*
+dados/publicos/*
 
-# 1. IGNORAR TODOS OS DADOS (Brutos e Processados)
-dados/brutos/
-dados/processados/
+# ...Mas mantém as pastas vazias (graças ao .gitkeep que vamos criar)
+!dados/brutos/.gitkeep
+!dados/processados/.gitkeep
+!dados/publicos/.gitkeep
 
-# 2. IGNORAR TODOS OS RESULTADOS (Gráficos, Tabelas)
+# --- ARTEFATOS GERADOS ---
+# Ignora gráficos, tabelas e logs gerados pelo script
+resultados/
 resultados_v7/
 
-# 3. IGNORAR TODOS OS MODELOS SALVOS E ARTEFATOS
+# --- MODELOS ---
+# Modelos pesados não devem ir pro git (são reprodutíveis pelo código)
 *.joblib
+
+# --- Outros ---
+.ipynb_checkpoints/
