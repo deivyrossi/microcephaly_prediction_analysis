@@ -102,15 +102,15 @@ Para provar a importância das fontes de dados externas, realizamos um estudo de
 Abaixo, comparamos a curva Precision-Recall entre o período de epidemia e o período posterior, evidenciando a perda de capacidade preditiva.
 
 <div align="center">
-  <img src="resultados/graficos/pr_pico.png" width="45%" alt="PR Curve Pico">
-  <img src="resultados/graficos/pr_fora.png" width="45%" alt="PR Curve Fora">
+  <img src="docs/imgs/pr_pico.png" width="45%" alt="PR Curve Pico">
+  <img src="docs/imgs/pr_fora.png" width="45%" alt="PR Curve Fora">
 </div>
 
 ### Diagnóstico de Viés (SHAP)
 O gráfico SHAP demonstra como o modelo passa a ignorar sintomas clínicos no período pós-epidêmico.
 
 <div align="center">
-  <img src="resultados/graficos/shap_fora.png" width="80%" alt="SHAP Drift">
+  <img src="docs/imgs/shap_fora.png" width="80%" alt="SHAP Drift">
 </div>
 
 ## Reproduzindo o Projeto
