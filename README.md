@@ -1,9 +1,6 @@
 # 🦟 Análise Preditiva e Generalização Temporal de Microcefalia no Brasil
 
 <div align="center">
-    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/c2/Aedes_aegypti_feeding.jpg/640px-Aedes_aegypti_feeding.jpg" width="300" height="200" alt="Aedes Aegypti" style="border-radius: 10px">
-    <br>
-    <em>Detecção de casos e análise de Concept Drift no contexto do Zika Vírus (2015-2024)</em>
 </div>
 
 <div align="center">
@@ -43,7 +40,7 @@ A análise abrange o período de **Pico Epidêmico (2015–2017)** e o período 
 
 ---
 
-## 🛠️ Metodologia e Pipeline
+## Metodologia e Pipeline
 
 O projeto implementa um pipeline **"Leak-Proof"** (à prova de vazamento), onde todas as transformações estatísticas são ajustadas exclusivamente nos dados de treino.
 
@@ -122,7 +119,7 @@ Para facilitar a reprodução e respeitar a LGPD (Lei Geral de Proteção de Dad
     ```
 
 3.  **Baixe os Dados:**
-    * Acesse o [Zenodo (Link Aqui)](LINK_DO_SEU_ZENODO_AQUI).
+    * Acesse o [Zenodo (Link Aqui)](https://zenodo.org/records/17880753).
     * Baixe `DATASET_PICO_ANONIMIZADO.csv` e `DATASET_FORA_PICO_ANONIMIZADO.csv`.
     * Coloque-os na pasta `dados/processados/`.
     * **Renomeie** para: `DADOS_PICO_EPIDEMICO.csv` e `DADOS_FORA_PICO.csv`.
@@ -131,7 +128,7 @@ Para facilitar a reprodução e respeitar a LGPD (Lei Geral de Proteção de Dad
     ```bash
     python run_pipeline.py
     ```
-    *Este comando irá treinar o modelo, gerar as métricas, os gráficos SHAP e as tabelas de resultados automaticamente na pasta `resultados_v7/`.*
+    *Este comando irá treinar o modelo, gerar as métricas, os gráficos SHAP e as tabelas de resultados automaticamente na pasta `resultados/`.*
 
 ---
 
@@ -141,10 +138,11 @@ Para facilitar a reprodução e respeitar a LGPD (Lei Geral de Proteção de Dad
 .
 ├── run_pipeline.py          # Script mestre de execução
 ├── src/
-│   ├── etl/                 # Scripts de processamento de dados (SINAN, CNES)
-│   ├── train.py             # Treinamento do Random Forest (v7.5 Leak-Proof)
-│   ├── analysis.py          # Geração de Gráficos e Métricas (v7.6)
+│   ├── etl/                 # Scripts de processamento de dados (SINAN, CNES e RESP)
+│   ├── eda/                 # 
+│   ├── train.py             # Treinamento do Random Forest
+│   ├── analysis.py          # Geração de Gráficos e Métricas
 │   ├── sensitivity.py       # Bootstrap para Intervalos de Confiança
 │   └── utils.py             # Funções utilitárias
 ├── dados/                   # Local para armazenar os CSVs
-└── resultados_v7/           # Saída do modelo (Ignorado pelo Git)
+└── resultados/           # Saída do modelo (Ignorado pelo Git)
